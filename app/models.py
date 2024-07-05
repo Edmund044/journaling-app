@@ -18,6 +18,6 @@ class JournalEntry(db.Model):
     title = db.Column(db.String(120), nullable=False)
     content = db.Column(db.Text, nullable=False)
     category = db.Column(db.String(64), nullable=False)
-    date = db.Column(db.DateTime, nullable=False)
+    date_created = db.Column(db.DateTime, default=db.func.current_timestamp())
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     user = db.relationship('Users', backref=db.backref('entries', lazy=True))

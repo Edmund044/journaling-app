@@ -12,6 +12,13 @@ journal_bp = Blueprint('journal', __name__)
 @swag_from({
     'tags': ['Profile'],
     'parameters': [
+                {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        },
         {
             'name': 'body',
             'in': 'body',
@@ -48,6 +55,13 @@ def update_profile():
 @swag_from({
     'tags': ['Journal'],
     'parameters': [
+                {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        },
         {
             'name': 'body',
             'in': 'body',
@@ -57,9 +71,8 @@ def update_profile():
                     'title': {'type': 'string'},
                     'content': {'type': 'string'},
                     'category': {'type': 'string'},
-                    'date': {'type': 'string', 'format': 'date'}
                 },
-                'required': ['title', 'content', 'category', 'date']
+                'required': ['title', 'content', 'category']
             }
         }
     ],
@@ -76,7 +89,6 @@ def create_entry():
         title=data['title'],
         content=data['content'],
         category=data['category'],
-        date=datetime.strptime(data['date'], '%Y-%m-%d'),
         user_id=user_id
     )
     db.session.add(new_entry)
@@ -87,6 +99,15 @@ def create_entry():
 @jwt_required()
 @swag_from({
     'tags': ['Journal'],
+    'parameters': [
+        {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        }
+    ],
     'responses': {
         '200': {
             'description': 'A list of journal entries',
@@ -109,7 +130,7 @@ def create_entry():
 def get_entries():
     user_id = get_jwt_identity()
     entries = JournalEntry.query.filter_by(user_id=user_id).all()
-    result = [{'id': entry.id, 'title': entry.title, 'content': entry.content, 'category': entry.category, 'date': entry.date.strftime('%Y-%m-%d')} for entry in entries]
+    result = [{'id': entry.id, 'title': entry.title, 'content': entry.content, 'category': entry.category, 'date': entry.date_created.strftime('%Y-%m-%d')} for entry in entries]
     return jsonify(result), 200
 
 @journal_bp.route('/entries/<int:id>', methods=['PUT'])
@@ -117,6 +138,20 @@ def get_entries():
 @swag_from({
     'tags': ['Journal'],
     'parameters': [
+               {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        },
+        {
+            'name': 'id',
+            'in': 'path',
+            'type': 'integer',
+            'required': True,
+            'description': 'ID of the journal entry to update'
+        },
         {
             'name': 'body',
             'in': 'body',
@@ -164,6 +199,14 @@ def update_entry(id):
 @jwt_required()
 @swag_from({
     'tags': ['Journal'],
+    'parameters': [
+               {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        }],
     'responses': {
         '200': {
             'description': 'Entry deleted successfully'
@@ -189,6 +232,13 @@ def delete_entry(id):
 @swag_from({
     'tags': ['Journal'],
     'parameters': [
+               {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        },
         {
             'name': 'start_date',
             'in': 'query',
@@ -223,7 +273,7 @@ def get_summary():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
 
-    entries = JournalEntry.query.filter(JournalEntry.user_id == user_id, JournalEntry.date >= start_date, JournalEntry.date <= end_date).all()
+    entries = JournalEntry.query.filter(JournalEntry.user_id == user_id, JournalEntry.date_created >= start_date, JournalEntry.date_created <= end_date).all()
     total_entries = len(entries)
     categories = set(entry.category for entry in entries)
 
