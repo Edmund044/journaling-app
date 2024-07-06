@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from flasgger import Swagger
 from .config import Config
+from flask_cors import CORS
 
 db = SQLAlchemy()
 # migrate = Migrate()
@@ -40,6 +41,7 @@ def create_app():
         "security": [{"Bearer": []}]
     }
     Swagger(app, config=swagger_config)
+    CORS(app, resources={r"/*": {"origins": "*"}}) 
 
     from .auth import auth_bp
     from .journal import journal_bp

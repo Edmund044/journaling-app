@@ -57,6 +57,57 @@ def update_profile() -> Tuple[Dict[str, str], int]:
     db.session.commit()
     return jsonify({'message': 'Profile updated successfully'}), 200
 
+@journal_bp.route('/profile', methods=['GET'])
+@jwt_required()
+@swag_from({
+    'tags': ['Profile'],
+    'parameters': [
+        {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        }
+    ],
+    'responses': {
+        '200': {
+            'description': 'User profile details',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'id': {'type': 'integer'},
+                    'username': {'type': 'string'},
+                    'email': {'type': 'string'}
+                }
+            }
+        },
+        '404': {
+            'description': 'User not found'
+        }
+    }
+})
+def get_profile() -> Tuple[Dict[str, Any], int]:
+    """
+    Get user profile details.
+
+    Requires JWT token in the header.
+    Returns the user profile details if found, or an error message if not.
+    """
+    user_id: int = get_jwt_identity()
+    user: Users = Users.query.get(user_id)
+
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    result: Dict[str, Any] = {
+        'id': user.id,
+        'username': user.username,
+        'email': user.email
+    }
+    return jsonify(result), 200
+
+
 @journal_bp.route('/entries', methods=['POST'])
 @jwt_required()
 @swag_from({
@@ -228,3 +279,166 @@ def update_entry(id: int) -> Tuple[Dict[str, str], int]:
 
     db.session.commit()
     return jsonify({'message': 'Entry updated successfully'}), 200
+
+
+@journal_bp.route('/entries/<int:id>', methods=['GET'])
+@jwt_required()
+@swag_from({
+    'tags': ['Journal'],
+    'parameters': [
+        {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        },
+        {
+            'name': 'id',
+            'in': 'path',
+            'type': 'integer',
+            'required': True,
+            'description': 'ID of the journal entry to retrieve'
+        }
+    ],
+    'responses': {
+        '200': {
+            'description': 'Journal entry',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'id': {'type': 'integer'},
+                    'title': {'type': 'string'},
+                    'content': {'type': 'string'},
+                    'category': {'type': 'string'},
+                    'date': {'type': 'string', 'format': 'date'}
+                }
+            }
+        },
+        '404': {
+            'description': 'Entry not found'
+        }
+    }
+})
+def get_entry(id: int) -> Tuple[Dict[str, Any], int]:
+    """
+    Get a single journal entry by ID.
+
+    Requires JWT token in the header.
+    Returns the journal entry if found, or an error message if not.
+    """
+    user_id: int = get_jwt_identity()
+    entry: JournalEntry = JournalEntry.query.filter_by(id=id, user_id=user_id).first()
+
+    if not entry:
+        return jsonify({'message': 'Entry not found'}), 404
+
+    result: Dict[str, Any] = {
+        'id': entry.id,
+        'title': entry.title,
+        'content': entry.content,
+        'category': entry.category,
+        'date': entry.date_created.strftime('%Y-%m-%d')
+    }
+    return jsonify(result), 200
+
+@journal_bp.route('/entries/<int:id>', methods=['DELETE'])
+@jwt_required()
+@swag_from({
+    'tags': ['Journal'],
+    'parameters': [
+        {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        },
+        {
+            'name': 'id',
+            'in': 'path',
+            'type': 'integer',
+            'required': True,
+            'description': 'ID of the journal entry to delete'
+        }
+    ],
+    'responses': {
+        '200': {
+            'description': 'Entry deleted successfully'
+        },
+        '404': {
+            'description': 'Entry not found'
+        }
+    }
+})
+def delete_entry(id: int) -> Tuple[Dict[str, str], int]:
+    """
+    Delete a journal entry by ID.
+
+    Requires JWT token in the header.
+    Returns a message indicating successful entry deletion or an error message if the entry is not found.
+    """
+    user_id: int = get_jwt_identity()
+    entry: JournalEntry = JournalEntry.query.filter_by(id=id, user_id=user_id).first()
+
+    if not entry:
+        return jsonify({'message': 'Entry not found'}), 404
+
+    db.session.delete(entry)
+    db.session.commit()
+    return jsonify({'message': 'Entry deleted successfully'}), 200
+
+@journal_bp.route('/summary', methods=['GET'])
+@jwt_required()
+@swag_from({
+    'tags': ['Journal'],
+    'parameters': [
+        {
+            'name': 'Authorization',
+            'in': 'header',
+            'type': 'string',
+            'required': True,
+            'description': 'JWT token'
+        },
+        {
+            'name': 'start_date',
+            'in': 'query',
+            'type': 'string',
+            'format': 'date'
+        },
+        {
+            'name': 'end_date',
+            'in': 'query',
+            'type': 'string',
+            'format': 'date'
+        }
+    ],
+    'responses': {
+        '200': {
+            'description': 'Summary data',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'total_entries': {'type': 'integer'},
+                    'categories': {
+                        'type': 'array',
+                        'items': {'type': 'string'}
+                    }
+                }
+            }
+        }
+    }
+})
+def get_summary():
+    user_id = get_jwt_identity()
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    entries = JournalEntry.query.filter(JournalEntry.user_id == user_id, JournalEntry.date_created >= start_date, JournalEntry.date <= end_date).all()
+    total_entries = len(entries)
+    categories = set(entry.category for entry in entries)
+
+    return jsonify({
+        'total_entries': total_entries,
+        'categories': list(categories)
+    }), 200
