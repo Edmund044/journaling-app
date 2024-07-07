@@ -5,6 +5,7 @@ from .app import db
 from .models import Users, JournalEntry
 from datetime import datetime
 from flasgger import swag_from
+from datetime import datetime, timedelta
 
 journal_bp: Blueprint = Blueprint('journal', __name__)
 
@@ -27,7 +28,8 @@ journal_bp: Blueprint = Blueprint('journal', __name__)
                 'type': 'object',
                 'properties': {
                     'username': {'type': 'string'},
-                    'email': {'type': 'string'}
+                    'email': {'type': 'string'},
+                    'password': {'type': 'string'}
                 }
             }
         }
@@ -53,6 +55,8 @@ def update_profile() -> Tuple[Dict[str, str], int]:
         user.username = data['username']
     if 'email' in data:
         user.email = data['email']
+    if 'password' in data:
+        user.set_password(data['password'])  
 
     db.session.commit()
     return jsonify({'message': 'Profile updated successfully'}), 200
@@ -401,44 +405,89 @@ def delete_entry(id: int) -> Tuple[Dict[str, str], int]:
             'description': 'JWT token'
         },
         {
-            'name': 'start_date',
+            'name': 'period',
             'in': 'query',
             'type': 'string',
-            'format': 'date'
-        },
-        {
-            'name': 'end_date',
-            'in': 'query',
-            'type': 'string',
-            'format': 'date'
+            'required': True,
+            'description': 'Period for which to fetch summary data (daily, weekly, monthly)'
         }
     ],
     'responses': {
         '200': {
-            'description': 'Summary data',
+            'description': 'Summary data of journal entries',
             'schema': {
                 'type': 'object',
                 'properties': {
+                    'period': {'type': 'string'},
+                    'start_date': {'type': 'string', 'format': 'date'},
+                    'end_date': {'type': 'string', 'format': 'date'},
                     'total_entries': {'type': 'integer'},
-                    'categories': {
+                    'entries': {
                         'type': 'array',
-                        'items': {'type': 'string'}
+                        'items': {
+                            'type': 'object',
+                            'properties': {
+                                'id': {'type': 'integer'},
+                                'title': {'type': 'string'},
+                                'content': {'type': 'string'},
+                                'category': {'type': 'string'},
+                                'date': {'type': 'string', 'format': 'date'}
+                            }
+                        }
                     }
                 }
             }
+        },
+        '400': {
+            'description': 'Invalid period provided'
         }
     }
 })
-def get_summary():
-    user_id = get_jwt_identity()
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
+def get_summary_data() -> Tuple[Dict[str, Any], int]:
+    """
+    Get summary data of journal entries based on daily, weekly, or monthly periods.
 
-    entries = JournalEntry.query.filter(JournalEntry.user_id == user_id, JournalEntry.date_created >= start_date, JournalEntry.date <= end_date).all()
-    total_entries = len(entries)
-    categories = set(entry.category for entry in entries)
-
-    return jsonify({
-        'total_entries': total_entries,
-        'categories': list(categories)
-    }), 200
+    Requires JWT token in the header.
+    Returns a summary of entries based on the specified period.
+    """
+    user_id: int = get_jwt_identity()
+    period: str = request.args.get('period')  # 'daily', 'weekly', or 'monthly'
+    
+    if period not in ['daily', 'weekly', 'monthly']:
+        return jsonify({'message': 'Invalid period provided'}), 400
+    
+    today: datetime = datetime.now().date()
+    
+    if period == 'daily':
+        start_date: datetime = today
+        end_date: datetime = today
+    elif period == 'weekly':
+        start_date: datetime = today - timedelta(days=today.weekday())
+        end_date: datetime = start_date + timedelta(days=6)
+    elif period == 'monthly':
+        start_date: datetime = today.replace(day=1)
+        next_month: datetime = today.replace(day=28) + timedelta(days=4)
+        end_date: datetime = next_month - timedelta(days=next_month.day)
+    
+    entries: List[JournalEntry] = JournalEntry.query.filter(
+        JournalEntry.user_id == user_id,
+        JournalEntry.date_created.between(start_date, end_date)
+    ).all()
+    
+    summary_data: Dict[str, Any] = {
+        'period': period,
+        'start_date': start_date.strftime('%Y-%m-%d'),
+        'end_date': end_date.strftime('%Y-%m-%d'),
+        'total_entries': len(entries),
+        'entries': [
+            {
+                'id': entry.id,
+                'title': entry.title,
+                'content': entry.content,
+                'category': entry.category,
+                'date': entry.date_created.strftime('%Y-%m-%d')
+            } for entry in entries
+        ]
+    }
+    
+    return jsonify(summary_data), 200
